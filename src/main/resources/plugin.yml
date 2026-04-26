@@ -1,0 +1,56 @@
+name: GodsVsMortals
+version: '${project.version}'
+main: com.example.godsvsmortals.GodsVsMortalsPlugin
+api-version: '1.21'
+description: A 3-day Minecraft server event plugin
+authors: [lossai]
+softdepend: [MythicMobs]
+
+commands:
+  gvm:
+    description: Admin command for managing the Gods vs Mortals event
+    usage: /gvm <start|stop>
+    permission: godsvsmortals.admin
+    aliases: [godsvsmortals]
+  vote:
+    description: Vote for a player to become a god
+    usage: /vote <player>
+    permission: godsvsmortals.vote
+  god:
+    description: God power commands
+    usage: /god <bless|curse|rival|unrival|truce|avatar> [args...]
+    permission: godsvsmortals.god
+  betray:
+    description: Initiate a betrayal ritual
+    usage: /betray
+    permission: godsvsmortals.play
+  fallen:
+    description: Fallen God commands
+    usage: /fallen steal
+    permission: godsvsmortals.fallen
+  sacrifice:
+    description: Sacrifice HP to banish a god
+    usage: /sacrifice <god_name>
+    permission: godsvsmortals.play
+  pray:
+    description: Send a prayer message to your god or claim daily reward
+    usage: /pray [message]
+    permission: godsvsmortals.play
+  bless:
+    description: Send a blessing message to a follower
+    usage: /bless <player> <message>
+    permission: godsvsmortals.god
+
+permissions:
+  godsvsmortals.admin:
+    description: Allows managing the event
+    default: op
+  godsvsmortals.god:
+    description: Allows using god commands
+    default: false
+  godsvsmortals.play:
+    description: Allows participating in the event
+    default: true
+  godsvsmortals.fallen:
+    description: Allows using fallen god commands
+    default: false

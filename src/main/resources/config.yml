@@ -1,0 +1,54 @@
+event:
+  day-duration-hours: 24
+  voting-duration-minutes: 10
+  voting-extension-minutes: 5
+  faith-cap: 10000
+  offline-catchup-max-hours: 4
+
+shrine:
+  pattern: "3x3_stone_brick_gold_center"
+
+faith:
+  base-rate-per-minute: 1
+  multipliers:
+    iron: 1.5
+    gold: 2.0
+    diamond: 3.0
+
+blessings:
+  cooldown-minutes: 5
+
+sacrifice:
+  banish-threshold: 50
+  banish-duration-hours: 1
+  hp-cost: 5
+  min-hp-to-sacrifice: 6
+
+quests:
+  daily-reward-faith: 5
+  login-reward:
+    - "BREAD:3"
+
+prophecies:
+  - "The gods grow restless. Blood will be spilled before dawn."
+  - "A shadow walks among the faithful. Trust no one."
+  - "The shrines whisper of betrayal. Watch your back."
+  - "Faith alone will not save you when the stars fall."
+  - "One among you carries the seed of rebellion."
+
+powers:
+  tier1:
+    - "SPEED_BOOST"
+    - "JUMP_BOOST"
+    - "NIGHT_VISION"
+    - "WATER_BREATHING"
+  tier2:
+    - "STRENGTH_AURA"
+    - "FIRE_RESISTANCE"
+    - "REGENERATION_PULSE"
+    - "INVISIBILITY_CLOAK"
+  tier3:
+    - "DIVINE_SHIELD"
+    - "THUNDER_STRIKE"
+    - "MASS_BLESSING"
+    - "GODLY_WRATH"

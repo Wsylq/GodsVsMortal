@@ -1,0 +1,18 @@
+# Build output
+target/
+
+# Kiro IDE files
+.kiro/
+
+# Test sources
+src/test/
+
+# Maven
+.mvn/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.DS_Store

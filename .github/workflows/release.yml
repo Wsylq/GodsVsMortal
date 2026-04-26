@@ -1,0 +1,38 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Set version in pom.xml
+        run: mvn versions:set -DnewVersion=${{ steps.version.outputs.VERSION }} -DgenerateBackupPoms=false
+
+      - name: Build (skip tests)
+        run: mvn package -DskipTests
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: GodsVsMortals v${{ steps.version.outputs.VERSION }}
+          files: target/gods-vs-mortals-${{ steps.version.outputs.VERSION }}.jar
+          generate_release_notes: true
