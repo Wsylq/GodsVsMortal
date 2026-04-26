@@ -86,6 +86,8 @@ public class EventManager {
         lastProphecyMs = clock.currentTimeMillis();
         scheduleTickTask();
         broadcastAll(Component.text("⚡ The Gods vs Mortals event has begun! Voting is now open.", NamedTextColor.GOLD));
+        // LOW #52 fix: broadcast actual voting duration
+        plugin.getVoteSystem().broadcastVotingStart(votingDurationMs);
         logger.info("Event started – entering VOTING phase.");
     }
 
@@ -122,7 +124,9 @@ public class EventManager {
         if (current == EventPhase.ENDED) return;
 
         long elapsed = getPhaseElapsed();
-        state.setLastTickTimestamp(clock.currentTimeMillis());
+        // HIGH #10 fix: only update lastTickTimestamp in FaithEngine.distributeFaith,
+        // not every second here. We still need it for phase tracking but use a separate field.
+        // The lastTickTimestamp in EventState is now only written by FaithEngine.distributeFaith.
 
         // Check phase transition
         long phaseDuration = getPhaseDuration(current);
@@ -159,8 +163,14 @@ public class EventManager {
         if (state.getCurrentPhase() != EventPhase.ENDED) {
             loadConfig();
             initProphecyPool();
-            // Restore prophecy timer: approximate last broadcast as phaseStart
-            lastProphecyMs = state.getPhaseStartTimestamp();
+            // MED #22 fix: restore prophecy timer to now minus a safe offset
+            // so we don't fire immediately on restart unless 8h truly elapsed
+            long now = clock.currentTimeMillis();
+            long phaseStart = state.getPhaseStartTimestamp();
+            long elapsed = now - phaseStart;
+            // If less than one interval has elapsed since phase start, set lastProphecy to now - elapsed
+            // so the next prophecy fires at the correct time
+            lastProphecyMs = elapsed >= PROPHECY_INTERVAL_MS ? now - (elapsed % PROPHECY_INTERVAL_MS) : phaseStart;
             scheduleTickTask();
             logger.info("Resuming event timers after restart.");
         }
@@ -198,6 +208,13 @@ public class EventManager {
     private void advancePhase(EventPhase current) {
         switch (current) {
             case VOTING -> {
+                // Close voting and elect gods (CRIT #1 fix)
+                List<UUID> electedGods = plugin.getVoteSystem().closeVoting();
+                if (electedGods.isEmpty()) {
+                    // Voting was extended, don't transition yet
+                    logger.info("Voting extended – not transitioning to DAY1 yet.");
+                    return;
+                }
                 transitionTo(EventPhase.DAY1);
                 broadcastAll(Component.text("⚡ Voting has ended! Day 1 (Rise) begins!", NamedTextColor.GOLD));
                 logger.info("Phase transition: VOTING → DAY1");
@@ -308,6 +325,10 @@ public class EventManager {
 
     private void broadcastFinalStandings() {
         broadcastAll(Component.text("⚡ The Gods vs Mortals event has ended! Final standings:", NamedTextColor.GOLD));
+        // Assign end-of-event titles (CRIT #5 fix)
+        if (plugin.getTitleSystem() != null) {
+            plugin.getTitleSystem().assignEndOfEventTitles();
+        }
         // Detailed standings will be populated by other subsystems (FaithEngine, etc.)
         // For now broadcast a placeholder that other tasks will extend.
         broadcastAll(Component.text("  (Detailed standings will be shown once all subsystems are wired.)",
@@ -340,7 +361,7 @@ public class EventManager {
     // -------------------------------------------------------------------------
 
     /** Exposes internal state for testing purposes. */
-    EventState getState() {
+    public EventState getState() {
         return state;
     }
 

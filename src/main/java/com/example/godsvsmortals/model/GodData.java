@@ -23,10 +23,11 @@ public class GodData {
     private int curseCount;
     private String uniquePower;
     private boolean avatarModeUsed;
+    private long avatarExpiry; // LOW #65 fix: persist avatar expiry across restarts
     private boolean banished;
     private long banishmentExpiry;
     private int sacrificePoints;
-    private int betrayalsAgainst; // Number of betrayals against this god
+    private int betrayalsAgainst;
     private List<UUID> rivals;
     private UUID trucePartner;
     private long truceExpiry;
@@ -62,6 +63,7 @@ public class GodData {
         section.set("curseCount", curseCount);
         section.set("uniquePower", uniquePower);
         section.set("avatarModeUsed", avatarModeUsed);
+        section.set("avatarExpiry", avatarExpiry);
         section.set("banished", banished);
         section.set("banishmentExpiry", banishmentExpiry);
         section.set("sacrificePoints", sacrificePoints);
@@ -88,6 +90,7 @@ public class GodData {
         data.curseCount = section.getInt("curseCount", 0);
         data.uniquePower = section.getString("uniquePower");
         data.avatarModeUsed = section.getBoolean("avatarModeUsed", false);
+        data.avatarExpiry = section.getLong("avatarExpiry", 0L);
         data.banished = section.getBoolean("banished", false);
         data.banishmentExpiry = section.getLong("banishmentExpiry", 0L);
         data.sacrificePoints = section.getInt("sacrificePoints", 0);
@@ -113,6 +116,7 @@ public class GodData {
         config.set("curseCount", curseCount);
         config.set("uniquePower", uniquePower);
         config.set("avatarModeUsed", avatarModeUsed);
+        config.set("avatarExpiry", avatarExpiry);
         config.set("banished", banished);
         config.set("banishmentExpiry", banishmentExpiry);
         config.set("sacrificePoints", sacrificePoints);
@@ -142,6 +146,7 @@ public class GodData {
             data.curseCount = config.getInt("curseCount", 0);
             data.uniquePower = config.getString("uniquePower");
             data.avatarModeUsed = config.getBoolean("avatarModeUsed", false);
+            data.avatarExpiry = config.getLong("avatarExpiry", 0L);
             data.banished = config.getBoolean("banished", false);
             data.banishmentExpiry = config.getLong("banishmentExpiry", 0L);
             data.sacrificePoints = config.getInt("sacrificePoints", 0);
@@ -184,6 +189,8 @@ public class GodData {
 
     public boolean isAvatarModeUsed() { return avatarModeUsed; }
     public void setAvatarModeUsed(boolean avatarModeUsed) { this.avatarModeUsed = avatarModeUsed; }
+    public long getAvatarExpiry() { return avatarExpiry; }
+    public void setAvatarExpiry(long avatarExpiry) { this.avatarExpiry = avatarExpiry; }
 
     public boolean isBanished() { return banished; }
     public void setBanished(boolean banished) { this.banished = banished; }

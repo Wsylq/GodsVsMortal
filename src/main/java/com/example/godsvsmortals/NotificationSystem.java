@@ -42,13 +42,20 @@ public class NotificationSystem implements Listener {
 
     /**
      * Delivers and clears all queued notifications for a player (Req 21.3, 21.5).
+     * HIGH #21 fix: check if player is online BEFORE removing from queue.
      */
     public void deliverAll(UUID playerUUID) {
-        List<String> messages = queue.remove(playerUUID);
+        List<String> messages = queue.get(playerUUID);
         if (messages == null || messages.isEmpty()) return;
 
         Player player = plugin.getServer().getPlayer(playerUUID);
-        if (player == null || !player.isOnline()) return;
+        if (player == null || !player.isOnline()) {
+            // HIGH #21 fix: don't remove from queue if player is offline
+            return;
+        }
+
+        // Player is online, deliver and remove
+        queue.remove(playerUUID);
 
         player.sendMessage(Component.text("--- Notifications while you were away ---", NamedTextColor.GOLD));
         for (String msg : messages) {

@@ -16,6 +16,10 @@ commands:
     description: Vote for a player to become a god
     usage: /vote <player>
     permission: godsvsmortals.vote
+  shrine:
+    description: Dedicate your shrine to a god
+    usage: /shrine dedicate <god_name>
+    permission: godsvsmortals.play
   god:
     description: God power commands
     usage: /god <bless|curse|rival|unrival|truce|avatar> [args...]
@@ -45,6 +49,9 @@ permissions:
   godsvsmortals.admin:
     description: Allows managing the event
     default: op
+  godsvsmortals.vote:
+    description: Allows voting for gods
+    default: true
   godsvsmortals.god:
     description: Allows using god commands
     default: false

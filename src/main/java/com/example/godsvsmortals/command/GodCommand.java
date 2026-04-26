@@ -1,5 +1,6 @@
 package com.example.godsvsmortals.command;
 
+import com.example.godsvsmortals.GodsVsMortalsPlugin;
 import com.example.godsvsmortals.PowerSystem;
 import com.example.godsvsmortals.enums.BlessingType;
 import com.example.godsvsmortals.enums.CurseType;
@@ -17,6 +18,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -37,9 +39,11 @@ public class GodCommand implements CommandExecutor, TabCompleter {
 
     private static final String PERMISSION = "godsvsmortals.god";
 
+    private final GodsVsMortalsPlugin plugin;
     private final PowerSystem powerSystem;
 
-    public GodCommand(PowerSystem powerSystem) {
+    public GodCommand(GodsVsMortalsPlugin plugin, PowerSystem powerSystem) {
+        this.plugin = plugin;
         this.powerSystem = powerSystem;
     }
 
@@ -59,12 +63,19 @@ public class GodCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        // HIGH #8 fix: also verify the player is actually an elected god (not just any OP)
+        List<UUID> electedGods = plugin.getEventManager().getState().getGodUUIDs();
+        if (!electedGods.contains(player.getUniqueId())) {
+            player.sendMessage(Component.text("You are not an elected god.", NamedTextColor.RED));
+            return true;
+        }
+
         if (args.length == 0) {
             sendUsage(player);
             return true;
         }
 
-        switch (args[0].toLowerCase()) {
+        switch (args[0].toLowerCase(java.util.Locale.ROOT)) {
             case "bless" -> handleBless(player, args);
             case "curse" -> handleCurse(player, args);
             case "rival" -> handleRival(player, args);
@@ -226,46 +237,67 @@ public class GodCommand implements CommandExecutor, TabCompleter {
                                                  @NotNull Command command,
                                                  @NotNull String label,
                                                  @NotNull String[] args) {
+        if (!(sender instanceof Player god)) return List.of();
+
+        Set<UUID> godUUIDs = Set.copyOf(plugin.getEventManager().getState().getGodUUIDs());
+
         if (args.length == 1) {
             return Arrays.asList("bless", "curse", "rival", "unrival", "truce", "avatar");
         }
 
         if (args.length == 2) {
-            String subCmd = args[0].toLowerCase();
-            if (subCmd.equals("bless") || subCmd.equals("rival") || subCmd.equals("unrival")) {
+            String subCmd = args[0].toLowerCase(java.util.Locale.ROOT);
+            String partial = args[1].toLowerCase(java.util.Locale.ROOT);
+
+            if (subCmd.equals("bless")) {
+                // Only this god's own followers
                 return Bukkit.getOnlinePlayers().stream()
+                        .filter(p -> {
+                            var mortal = plugin.getPowerSystem().getMortalData(p.getUniqueId());
+                            return mortal != null && god.getUniqueId().equals(mortal.getPledgedGodUUID());
+                        })
                         .map(Player::getName)
-                        .filter(name -> name.toLowerCase().startsWith(args[1].toLowerCase()))
+                        .filter(name -> name.toLowerCase(java.util.Locale.ROOT).startsWith(partial))
                         .collect(Collectors.toList());
             }
-            if (subCmd.equals("truce")) {
+            if (subCmd.equals("rival") || subCmd.equals("unrival") || subCmd.equals("truce")) {
+                // MED #40 fix: for "truce", only add "accept" if it doesn't match a real player name
                 List<String> options = new ArrayList<>();
-                options.add("accept");
-                options.addAll(Bukkit.getOnlinePlayers().stream()
+                List<String> godNames = Bukkit.getOnlinePlayers().stream()
+                        .filter(p -> godUUIDs.contains(p.getUniqueId()))
+                        .filter(p -> !p.getUniqueId().equals(god.getUniqueId()))
                         .map(Player::getName)
-                        .filter(name -> name.toLowerCase().startsWith(args[1].toLowerCase()))
-                        .collect(Collectors.toList()));
+                        .filter(name -> name.toLowerCase(java.util.Locale.ROOT).startsWith(partial))
+                        .collect(Collectors.toList());
+                if (subCmd.equals("truce")) {
+                    // Only add "accept" if no player is named "accept"
+                    boolean acceptIsPlayerName = godNames.stream()
+                            .anyMatch(n -> n.equalsIgnoreCase("accept"));
+                    if (!acceptIsPlayerName && "accept".startsWith(partial)) {
+                        options.add("accept");
+                    }
+                }
+                options.addAll(godNames);
                 return options;
             }
             if (subCmd.equals("curse")) {
-                return List.of(); // shrine IDs are UUIDs, no tab completion
+                return List.of(); // shrine IDs are UUIDs, no useful completion
             }
         }
 
         if (args.length == 3) {
             String subCmd = args[0].toLowerCase();
+            String partial = args[2].toLowerCase();
             if (subCmd.equals("bless")) {
                 return Arrays.stream(BlessingType.values())
-                        .map(Enum::name)
-                        .map(String::toLowerCase)
-                        .filter(name -> name.startsWith(args[2].toLowerCase()))
+                        .map(e -> e.name().toLowerCase())
+                        .filter(name -> name.startsWith(partial))
                         .collect(Collectors.toList());
             }
             if (subCmd.equals("curse")) {
                 return Arrays.stream(CurseType.values())
-                        .map(Enum::name)
-                        .map(String::toLowerCase)
-                        .filter(name -> name.startsWith(args[2].toLowerCase()))
+                        .map(e -> e.name().toLowerCase())
+                        .filter(name -> name.startsWith(partial))
                         .collect(Collectors.toList());
             }
         }

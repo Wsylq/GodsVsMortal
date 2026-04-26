@@ -92,14 +92,14 @@ public class GodsVsMortalsPlugin extends JavaPlugin {
 
         var voteCmd = getCommand("vote");
         if (voteCmd != null) {
-            VoteCommand voteExecutor = new VoteCommand(voteSystem);
+            VoteCommand voteExecutor = new VoteCommand(this, voteSystem);
             voteCmd.setExecutor(voteExecutor);
             voteCmd.setTabCompleter(voteExecutor);
         }
 
         var godCmd = getCommand("god");
         if (godCmd != null) {
-            GodCommand godExecutor = new GodCommand(powerSystem);
+            GodCommand godExecutor = new GodCommand(this, powerSystem);
             godCmd.setExecutor(godExecutor);
             godCmd.setTabCompleter(godExecutor);
         }
@@ -111,24 +111,33 @@ public class GodsVsMortalsPlugin extends JavaPlugin {
 
         var fallenCmd = getCommand("fallen");
         if (fallenCmd != null) {
-            fallenCmd.setExecutor(new FallenCommand(powerSystem));
+            FallenCommand fallenExecutor = new FallenCommand(powerSystem);
+            fallenCmd.setExecutor(fallenExecutor);
+            fallenCmd.setTabCompleter(fallenExecutor);
         }
 
         var sacrificeCmd = getCommand("sacrifice");
         if (sacrificeCmd != null) {
-            SacrificeCommand sacrificeExecutor = new SacrificeCommand(powerSystem);
+            SacrificeCommand sacrificeExecutor = new SacrificeCommand(this, powerSystem);
             sacrificeCmd.setExecutor(sacrificeExecutor);
             sacrificeCmd.setTabCompleter(sacrificeExecutor);
         }
 
+        var shrineCmd = getCommand("shrine");
+        if (shrineCmd != null) {
+            ShrineCommand shrineExecutor = new ShrineCommand(this);
+            shrineCmd.setExecutor(shrineExecutor);
+            shrineCmd.setTabCompleter(shrineExecutor);
+        }
+
         var prayCmd = getCommand("pray");
         if (prayCmd != null) {
-            prayCmd.setExecutor(new PrayCommand(chatSystem));
+            prayCmd.setExecutor(new PrayCommand(this, chatSystem, questSystem));
         }
 
         var blessCmd = getCommand("bless");
         if (blessCmd != null) {
-            BlessCommand blessExecutor = new BlessCommand(chatSystem);
+            BlessCommand blessExecutor = new BlessCommand(this, chatSystem);
             blessCmd.setExecutor(blessExecutor);
             blessCmd.setTabCompleter(blessExecutor);
         }

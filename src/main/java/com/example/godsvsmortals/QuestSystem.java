@@ -144,9 +144,10 @@ public class QuestSystem {
      * Called by {@link EventManager} on day transitions.
      *
      * <p>Requirement: 11.3
+     * <p>HIGH #12 fix: Don't double-increment currentDayNumber
      */
     public void resetDailyQuests() {
-        currentDayNumber++;
+        // Don't increment here - EventManager already set the day number
         // Reset cached mortals
         for (MortalData data : mortalCache.values()) {
             resetProgressForMortal(data);
@@ -304,6 +305,7 @@ public class QuestSystem {
 
     /**
      * Parses an item entry in the format "MATERIAL:AMOUNT" (e.g. "BREAD:3").
+     * LOW #43 fix: clamp amount to material's max stack size.
      */
     ItemStack parseItemEntry(String entry) {
         if (entry == null || entry.isBlank()) return null;
@@ -311,6 +313,8 @@ public class QuestSystem {
         try {
             Material mat = Material.valueOf(parts[0].toUpperCase());
             int amount = parts.length > 1 ? Integer.parseInt(parts[1]) : 1;
+            // LOW #43 fix: clamp to max stack size
+            amount = Math.max(1, Math.min(amount, mat.getMaxStackSize()));
             return new ItemStack(mat, amount);
         } catch (IllegalArgumentException e) {
             logger.warning("QuestSystem: invalid item entry '" + entry + "': " + e.getMessage());
@@ -347,9 +351,9 @@ public class QuestSystem {
 
     /**
      * Returns the MortalData for the given UUID, loading from disk if not cached.
-     * Creates a new default record if none exists.
+     * MED #23 fix: resolve real player name instead of UUID string.
      */
-    MortalData getMortalData(UUID uuid) {
+    public MortalData getMortalData(UUID uuid) {
         if (mortalCache.containsKey(uuid)) {
             return mortalCache.get(uuid);
         }
@@ -358,7 +362,11 @@ public class QuestSystem {
         File file = new File(mortalsDir, uuid.toString() + ".yml");
         MortalData data = MortalData.load(file, logger);
         if (data == null) {
-            data = new MortalData(uuid, uuid.toString());
+            // MED #23 fix: resolve real name from Bukkit
+            String playerName = uuid.toString();
+            org.bukkit.OfflinePlayer op = plugin.getServer().getOfflinePlayer(uuid);
+            if (op.getName() != null) playerName = op.getName();
+            data = new MortalData(uuid, playerName);
             data.getDailyQuestProgress().setDayNumber(currentDayNumber);
         }
         mortalCache.put(uuid, data);
@@ -366,21 +374,19 @@ public class QuestSystem {
     }
 
     /**
-     * Persists a mortal's data to disk asynchronously.
+     * Persists a mortal's data to disk.
+     * MED #24 fix: save synchronously on main thread to avoid race conditions.
+     * The file I/O is fast enough for individual saves; bulk saves use saveAllMortals.
      */
     private void saveMortalData(MortalData data) {
-        MortalData snapshot = data; // MortalData is mutable but we save on main thread here
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            File mortalsDir = new File(plugin.getDataFolder(), "mortals");
-            mortalsDir.mkdirs();
-            File file = new File(mortalsDir, snapshot.getUuid().toString() + ".yml");
-            try {
-                snapshot.save(file);
-            } catch (IOException e) {
-                logger.severe("QuestSystem: failed to save mortal data for "
-                        + snapshot.getUuid() + ": " + e.getMessage());
-            }
-        });
+        File mortalsDir = new File(plugin.getDataFolder(), "mortals");
+        mortalsDir.mkdirs();
+        File file = new File(mortalsDir, data.getUuid().toString() + ".yml");
+        try {
+            data.save(file);
+        } catch (IOException e) {
+            logger.severe("QuestSystem: failed to save mortal data for " + data.getUuid() + ": " + e.getMessage());
+        }
     }
 
     /**

@@ -3,9 +3,11 @@ package com.example.godsvsmortals;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
 
 /**
@@ -49,11 +51,20 @@ public class VoteSystem {
 
     /**
      * Records a vote from {@code voter} for the player named {@code candidateName}.
+     * MED #27 fix: allow voting for offline players who have played before.
+     * MED #38 fix: reject votes outside VOTING phase.
      *
      * @return {@code true} if the vote was accepted, {@code false} if rejected
      */
     public boolean castVote(Player voter, String candidateName) {
         UUID voterUUID = voter.getUniqueId();
+
+        // MED #38 fix: only allow voting during VOTING phase
+        com.example.godsvsmortals.enums.EventPhase phase = plugin.getEventManager().getCurrentPhase();
+        if (phase != com.example.godsvsmortals.enums.EventPhase.VOTING) {
+            voter.sendMessage(Component.text("Voting is not currently open.", NamedTextColor.RED));
+            return false;
+        }
 
         // Self-vote rejection (Req 2.4)
         if (voter.getName().equalsIgnoreCase(candidateName)) {
@@ -69,15 +80,24 @@ public class VoteSystem {
             return false;
         }
 
-        // Resolve candidate by name
+        // MED #27 fix: resolve candidate online first, then offline fallback
+        UUID candidateUUID;
+        String resolvedName;
         Player candidate = Bukkit.getPlayerExact(candidateName);
-        if (candidate == null) {
-            voter.sendMessage(Component.text(
-                    "Player '" + candidateName + "' is not online.", NamedTextColor.RED));
-            return false;
+        if (candidate != null) {
+            candidateUUID = candidate.getUniqueId();
+            resolvedName = candidate.getName();
+        } else {
+            @SuppressWarnings("deprecation")
+            OfflinePlayer offline = Bukkit.getOfflinePlayer(candidateName);
+            if (!offline.hasPlayedBefore()) {
+                voter.sendMessage(Component.text(
+                        "Player '" + candidateName + "' not found.", NamedTextColor.RED));
+                return false;
+            }
+            candidateUUID = offline.getUniqueId();
+            resolvedName = offline.getName() != null ? offline.getName() : candidateName;
         }
-
-        UUID candidateUUID = candidate.getUniqueId();
 
         // Prevent voting for an already-elected god (Req 2.10)
         if (godUUIDs.contains(candidateUUID)) {
@@ -91,31 +111,21 @@ public class VoteSystem {
         voteTallies.merge(candidateUUID, 1, Integer::sum);
 
         voter.sendMessage(Component.text(
-                "Your vote for " + candidate.getName() + " has been recorded.", NamedTextColor.GREEN));
+                "Your vote for " + resolvedName + " has been recorded.", NamedTextColor.GREEN));
         return true;
     }
 
     /**
      * Closes voting and elects the top-3 players as gods.
-     *
-     * <p>If fewer than 3 candidates have votes, the voting window is extended instead
-     * and an empty list is returned (Req 2.7).
-     *
-     * <p>Ties for the final slot are broken randomly (Req 2.8).
-     *
-     * @return list of elected god UUIDs (size 3), or empty list if voting was extended
+     * HIGH #7 fix: auto-assigns godsvsmortals.god permission to elected gods.
      */
     public List<UUID> closeVoting() {
         // Count distinct candidates with at least 1 vote
         long distinctCandidates = voteTallies.values().stream().filter(v -> v > 0).count();
 
         if (distinctCandidates < 3) {
-            // Extend voting (Req 2.7)
+            // Extend voting (Req 2.7) - extendVoting() now actually shifts the timer
             extendVoting();
-            broadcastAll(Component.text(
-                    "⚡ Not enough candidates have votes yet. Voting has been extended by "
-                            + (extensionDurationMs / 60_000L) + " minutes!",
-                    NamedTextColor.YELLOW));
             logger.info("Voting extended – only " + distinctCandidates + " candidate(s) have votes.");
             return Collections.emptyList();
         }
@@ -125,6 +135,14 @@ public class VoteSystem {
         // Assign god role (Req 2.9)
         godUUIDs.addAll(elected);
         plugin.getEventManager().getState().setGodUUIDs(elected);
+
+        // HIGH #7 fix: auto-assign godsvsmortals.god permission to elected gods
+        for (UUID godUUID : elected) {
+            Player god = Bukkit.getPlayer(godUUID);
+            if (god != null && god.isOnline()) {
+                god.addAttachment(plugin, "godsvsmortals.god", true);
+            }
+        }
 
         // Broadcast elected gods (Req 2.9)
         StringBuilder names = new StringBuilder();
@@ -149,9 +167,13 @@ public class VoteSystem {
 
     /**
      * Extends the voting window by the configured extension duration.
+     * HIGH #9 fix: actually adjusts the phase start timestamp so the timer is extended.
      * Broadcasts the extension to all online players (Req 2.7).
      */
     public void extendVoting() {
+        // Shift phaseStartTimestamp forward so the phase lasts extensionDurationMs longer
+        long current = plugin.getEventManager().getState().getPhaseStartTimestamp();
+        plugin.getEventManager().getState().setPhaseStartTimestamp(current + extensionDurationMs);
         broadcastAll(Component.text(
                 "⚡ Voting has been extended by " + (extensionDurationMs / 60_000L) + " minutes!",
                 NamedTextColor.YELLOW));
@@ -212,8 +234,8 @@ public class VoteSystem {
             }
         }
 
-        // Randomly pick one from the tied set (Req 2.8)
-        UUID chosen = tiedCandidates.get(new Random().nextInt(tiedCandidates.size()));
+        // LOW #41 fix: use ThreadLocalRandom instead of new Random()
+        UUID chosen = tiedCandidates.get(ThreadLocalRandom.current().nextInt(tiedCandidates.size()));
         result.add(chosen);
 
         return result;

@@ -16,3 +16,9 @@ src/test/
 *.iml
 .vscode/
 *.DS_Store
+
+# Reports
+Reports/
+
+# jqwik test database (LOW #61 fix)
+.jqwik-database

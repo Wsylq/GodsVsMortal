@@ -11,6 +11,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 
+import java.io.File;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -117,12 +118,16 @@ public class TitleSystem implements Listener {
 
     /**
      * Listens for god kills during Ragnarok and assigns "Godslayer" title.
+     * HIGH #18 fix: only award during RAGNAROK phase.
      *
      * <p>Requirement: 18.3
      */
     @EventHandler
     public void onEntityDeath(EntityDeathEvent event) {
         if (!(event.getEntity() instanceof Player victim)) return;
+
+        // HIGH #18 fix: only during Ragnarok
+        if (plugin.getEventManager().getCurrentPhase() != com.example.godsvsmortals.enums.EventPhase.RAGNAROK) return;
 
         // Check if victim is a god
         UUID victimUUID = victim.getUniqueId();
@@ -177,9 +182,21 @@ public class TitleSystem implements Listener {
     }
 
     private List<MortalData> getAllMortals() {
-        // This is a simplified implementation - in production you'd iterate over all mortal files
-        // For now, return empty list as mortals are loaded on-demand
-        return Collections.emptyList();
+        // CRIT #5 fix: Load all mortal files from disk
+        List<MortalData> mortals = new ArrayList<>();
+        File mortalsDir = new File(plugin.getDataFolder(), "mortals");
+        if (!mortalsDir.exists()) return mortals;
+
+        File[] files = mortalsDir.listFiles((dir, name) -> name.endsWith(".yml"));
+        if (files == null) return mortals;
+
+        for (File file : files) {
+            MortalData data = MortalData.load(file, logger);
+            if (data != null) {
+                mortals.add(data);
+            }
+        }
+        return mortals;
     }
 
     private List<GodData> getAllGods() {

@@ -120,16 +120,20 @@ public class ShrineDetector implements Listener {
 
     /**
      * Deactivates and removes a shrine. Removes particles and notifies the owner (Req 3.8, 3.9).
-     *
-     * @param shrine      the shrine to destroy
-     * @param destroyerUUID the UUID of the player who destroyed it (may equal owner)
+     * MED #26 fix: delete the YAML file of destroyed shrines.
      */
     public void destroyShrine(Shrine shrine, UUID destroyerUUID) {
         shrine.setActive(false);
         shrinesByOwner.remove(shrine.getOwnerUUID());
         shrinesByLocation.remove(locationKey(shrine.getCoreLocation()));
         stopParticleTask(shrine.getId());
-        saveShrine(shrine);
+
+        // MED #26 fix: delete the shrine file instead of saving with active=false
+        File shrinesDir = new File(plugin.getDataFolder(), "shrines");
+        File shrineFile = new File(shrinesDir, shrine.getId() + ".yml");
+        if (shrineFile.exists()) {
+            shrineFile.delete();
+        }
 
         // Log destroyer (Req 3.9)
         logger.info("Shrine " + shrine.getId() + " destroyed by " + destroyerUUID
@@ -139,11 +143,10 @@ public class ShrineDetector implements Listener {
         Player owner = plugin.getServer().getPlayer(shrine.getOwnerUUID());
         String destroyerName = resolvePlayerName(destroyerUUID);
         String message = "☠ Your shrine has been destroyed by " + destroyerName + "!";
-        
+
         if (owner != null && owner.isOnline()) {
             owner.sendMessage(Component.text(message, NamedTextColor.RED));
         } else {
-            // Queue offline notification (Req 21.1)
             plugin.getNotificationSystem().queue(shrine.getOwnerUUID(), message);
         }
     }
@@ -154,23 +157,58 @@ public class ShrineDetector implements Listener {
 
     /**
      * Handles block placement. Checks if the placed block completes a shrine pattern
-     * or upgrades an existing shrine's temple tier. (Req 3.1, 3.2, 4.1)
+     * or upgrades an existing shrine's temple tier.
+     * HIGH #16 fix: check all 8 surrounding positions too, not just the gold block.
+     * HIGH #17 fix: check temple upgrade BEFORE new shrine detection for gold blocks.
+     * (Req 3.1, 3.2, 4.1)
      */
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
         Block placed = event.getBlockPlaced();
         Player player = event.getPlayer();
 
-        // Check if this placement completes a shrine pattern centered on the placed block
+        // HIGH #17 fix: check temple upgrade first for gold blocks near existing shrines
+        if (placed.getType() == Material.GOLD_BLOCK || placed.getType() == Material.IRON_BLOCK
+                || placed.getType() == Material.DIAMOND_BLOCK) {
+            // If this block is adjacent to an existing shrine core, it's an upgrade attempt
+            boolean isUpgrade = isAdjacentToExistingShrine(placed);
+            if (isUpgrade) {
+                checkTempleUpgrade(placed);
+                return;
+            }
+        }
+
+        // HIGH #16 fix: check shrine completion for gold block OR any of the 8 surrounding stone bricks
         if (placed.getType() == Material.GOLD_BLOCK) {
             if (isValidShrinePattern(placed.getLocation())) {
                 handleShrineCompletion(player, placed.getLocation());
                 return;
             }
+        } else if (placed.getType() == Material.STONE_BRICKS) {
+            // Check if any adjacent gold block now forms a complete shrine
+            for (int[] offset : SURROUND_OFFSETS) {
+                Location candidateCenter = placed.getLocation().clone().add(-offset[0], 0, -offset[1]);
+                if (candidateCenter.getBlock().getType() == Material.GOLD_BLOCK
+                        && isValidShrinePattern(candidateCenter)) {
+                    handleShrineCompletion(player, candidateCenter);
+                    return;
+                }
+            }
         }
 
         // Check if this placement upgrades a nearby shrine's temple tier
         checkTempleUpgrade(placed);
+    }
+
+    /** Returns true if the placed block is adjacent to an existing active shrine core. */
+    private boolean isAdjacentToExistingShrine(Block placed) {
+        int bx = placed.getX(), by = placed.getY(), bz = placed.getZ();
+        World world = placed.getWorld();
+        for (int[] offset : SURROUND_OFFSETS) {
+            Location candidateCore = new Location(world, bx + offset[0], by, bz + offset[1]);
+            if (getShrineAtLocation(candidateCore) != null) return true;
+        }
+        return false;
     }
 
     /**
@@ -316,7 +354,9 @@ public class ShrineDetector implements Listener {
     // -------------------------------------------------------------------------
 
     /**
-     * Checks if the placed block upgrades a nearby shrine's temple tier. (Req 4.1, 4.2, 4.3, 4.4)
+     * Checks if the placed block upgrades a nearby shrine's temple tier.
+     * MED #32 fix: also check Y±1 for blocks placed on slopes.
+     * (Req 4.1, 4.2, 4.3, 4.4)
      */
     private void checkTempleUpgrade(Block placed) {
         Material type = placed.getType();
@@ -324,24 +364,26 @@ public class ShrineDetector implements Listener {
             return;
         }
 
-        // Look for a shrine core within 1 block (the surrounding 8 positions)
         int bx = placed.getX();
         int by = placed.getY();
         int bz = placed.getZ();
         World world = placed.getWorld();
 
-        for (int[] offset : SURROUND_OFFSETS) {
-            Location candidateCore = new Location(world, bx + offset[0], by, bz + offset[1]);
-            Shrine shrine = getShrineAtLocation(candidateCore);
-            if (shrine != null) {
-                TemplateTier newTier = detectTier(shrine.getCoreLocation());
-                if (newTier != shrine.getTier()) {
-                    shrine.setTier(newTier);
-                    saveShrine(shrine);
-                    updateParticleTask(shrine);
-                    notifyTierChange(shrine, newTier);
+        // MED #32 fix: check Y, Y-1, Y+1 to handle shrines on slopes
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int[] offset : SURROUND_OFFSETS) {
+                Location candidateCore = new Location(world, bx + offset[0], by + dy, bz + offset[1]);
+                Shrine shrine = getShrineAtLocation(candidateCore);
+                if (shrine != null) {
+                    TemplateTier newTier = detectTier(shrine.getCoreLocation());
+                    if (newTier != shrine.getTier()) {
+                        shrine.setTier(newTier);
+                        saveShrine(shrine);
+                        updateParticleTask(shrine);
+                        notifyTierChange(shrine, newTier);
+                    }
+                    return;
                 }
-                return;
             }
         }
     }

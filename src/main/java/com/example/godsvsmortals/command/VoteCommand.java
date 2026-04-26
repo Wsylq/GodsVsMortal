@@ -1,6 +1,8 @@
 package com.example.godsvsmortals.command;
 
+import com.example.godsvsmortals.GodsVsMortalsPlugin;
 import com.example.godsvsmortals.VoteSystem;
+import com.example.godsvsmortals.enums.EventPhase;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
@@ -13,50 +15,46 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
-/**
- * Handles the /vote <player> command.
- *
- * <p>Delegates all validation and recording to {@link VoteSystem}.
- *
- * Requirements: 2.3, 2.4, 2.5
- */
 public class VoteCommand implements CommandExecutor, TabCompleter {
 
     private final VoteSystem voteSystem;
+    private final GodsVsMortalsPlugin plugin;
 
-    public VoteCommand(VoteSystem voteSystem) {
+    public VoteCommand(GodsVsMortalsPlugin plugin, VoteSystem voteSystem) {
+        this.plugin = plugin;
         this.voteSystem = voteSystem;
     }
 
     @Override
-    public boolean onCommand(@NotNull CommandSender sender,
-                             @NotNull Command command,
-                             @NotNull String label,
-                             @NotNull String[] args) {
-
+    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
+                             @NotNull String label, @NotNull String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage(Component.text("Only players can vote.", NamedTextColor.RED));
             return true;
         }
-
         if (args.length == 0) {
             player.sendMessage(Component.text("Usage: /vote <player>", NamedTextColor.YELLOW));
             return true;
         }
-
         voteSystem.castVote(player, args[0]);
         return true;
     }
 
     @Override
-    public @Nullable List<String> onTabComplete(@NotNull CommandSender sender,
-                                                 @NotNull Command command,
-                                                 @NotNull String label,
-                                                 @NotNull String[] args) {
+    public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
+                                                 @NotNull String label, @NotNull String[] args) {
         if (args.length == 1) {
+            EventPhase phase = plugin.getEventManager().getCurrentPhase();
+            // Only show candidates during VOTING phase; exclude already-elected gods
+            Set<UUID> godUUIDs = Set.copyOf(plugin.getEventManager().getState().getGodUUIDs());
             return Bukkit.getOnlinePlayers().stream()
+                    .filter(p -> phase == EventPhase.VOTING)
+                    .filter(p -> !godUUIDs.contains(p.getUniqueId()))
+                    .filter(p -> !(sender instanceof Player sp) || !p.getUniqueId().equals(sp.getUniqueId()))
                     .map(Player::getName)
                     .filter(name -> name.toLowerCase().startsWith(args[0].toLowerCase()))
                     .collect(Collectors.toList());

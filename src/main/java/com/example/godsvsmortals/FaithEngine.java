@@ -239,26 +239,30 @@ public class FaithEngine {
     }
 
     /**
-     * Persists a god's faith total to their YAML file.
-     * Loads existing GodData (or creates a stub) and updates faithTotal.
+     * Persists a god's faith total to their YAML file asynchronously.
+     * MED #25 fix: use async I/O instead of blocking main thread every minute.
      */
     private void persistGodFaith(UUID godUUID, int faithTotal) {
         File godsDir = new File(plugin.getDataFolder(), "gods");
         godsDir.mkdirs();
         File file = new File(godsDir, godUUID.toString() + ".yml");
 
-        GodData data = GodData.load(file, logger);
-        if (data == null) {
-            // Create a minimal GodData stub if none exists yet
-            data = new GodData(godUUID, godUUID.toString());
-        }
-        data.setFaithTotal(faithTotal);
+        // Capture values for async thread
+        final int faithSnapshot = faithTotal;
+        final UUID uuidSnapshot = godUUID;
 
-        try {
-            data.save(file);
-        } catch (IOException e) {
-            logger.severe("FaithEngine: failed to persist faith for god " + godUUID + ": " + e.getMessage());
-        }
+        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            GodData data = GodData.load(file, logger);
+            if (data == null) {
+                data = new GodData(uuidSnapshot, uuidSnapshot.toString());
+            }
+            data.setFaithTotal(faithSnapshot);
+            try {
+                data.save(file);
+            } catch (IOException e) {
+                logger.severe("FaithEngine: failed to persist faith for god " + uuidSnapshot + ": " + e.getMessage());
+            }
+        });
     }
 
     /**

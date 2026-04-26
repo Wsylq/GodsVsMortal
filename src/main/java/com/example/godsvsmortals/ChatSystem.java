@@ -1,6 +1,7 @@
 package com.example.godsvsmortals;
 
 import com.example.godsvsmortals.model.MortalData;
+import com.example.godsvsmortals.model.Shrine;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -27,18 +28,21 @@ public class ChatSystem {
 
     /**
      * Sends a /pray message from a mortal to their god.
-     *
-     * @param mortal the mortal sending the prayer
-     * @param message the prayer message
-     * @return true if the message was sent; false if rejected
-     *
-     * <p>Requirements: 19.1, 19.3, 19.6
+     * MED #29 fix: reject if event is not running.
+     * MED #46 fix: warn if god is offline instead of silently discarding.
      */
     public boolean pray(Player mortal, String message) {
-        UUID mortalUUID = mortal.getUniqueId();
-        MortalData data = plugin.getQuestSystem().getMortalData(mortalUUID);
+        // MED #29 fix: phase check
+        com.example.godsvsmortals.enums.EventPhase phase = plugin.getEventManager().getCurrentPhase();
+        if (phase == com.example.godsvsmortals.enums.EventPhase.ENDED
+                || phase == com.example.godsvsmortals.enums.EventPhase.VOTING) {
+            mortal.sendMessage(Component.text("The event is not currently running.", NamedTextColor.RED));
+            return false;
+        }
 
-        // Check if mortal has a pledged god (Req 19.3)
+        UUID mortalUUID = mortal.getUniqueId();
+        var data = plugin.getQuestSystem().getMortalData(mortalUUID);
+
         UUID godUUID = data.getPledgedGodUUID();
         if (godUUID == null) {
             mortal.sendMessage(Component.text(
@@ -47,21 +51,29 @@ public class ChatSystem {
             return false;
         }
 
-        // Deliver message to god if online (Req 19.1, 19.6)
-        Player god = Bukkit.getPlayer(godUUID);
+        Player god = plugin.getServer().getPlayer(godUUID);
         if (god != null && god.isOnline()) {
             Component prayerMessage = Component.text()
-                    .append(Component.text("[Prayer] ", NamedTextColor.GOLD, TextDecoration.ITALIC))
+                    .append(Component.text("[Prayer] ", NamedTextColor.GOLD, net.kyori.adventure.text.format.TextDecoration.ITALIC))
                     .append(Component.text(mortal.getName() + ": ", NamedTextColor.YELLOW))
                     .append(Component.text(message, NamedTextColor.WHITE))
                     .build();
             god.sendMessage(prayerMessage);
+            mortal.sendMessage(Component.text("✦ Your prayer has been sent to your god.", NamedTextColor.AQUA));
+        } else {
+            // MED #46 fix: queue for offline god and warn mortal
+            plugin.getNotificationSystem().queue(godUUID, "[Prayer from " + mortal.getName() + "] " + message);
+            mortal.sendMessage(Component.text(
+                    "✦ Your god is offline. Your prayer has been queued for delivery.",
+                    NamedTextColor.YELLOW));
         }
 
-        // Confirm to mortal
-        mortal.sendMessage(Component.text(
-                "✦ Your prayer has been sent to your god.",
-                NamedTextColor.AQUA));
+        // LOW #57 fix: record SHRINE_PRAY quest action if mortal is at their shrine
+        Shrine shrine = plugin.getShrineDetector().getShrineByOwner(mortal.getUniqueId());
+        if (shrine != null && shrine.getDedicatedGodUUID() != null) {
+            plugin.getQuestSystem().recordAction(mortal.getUniqueId(),
+                    com.example.godsvsmortals.enums.QuestActionType.SHRINE_PRAY, shrine.getId());
+        }
 
         logger.info("ChatSystem: " + mortal.getName() + " prayed to god " + godUUID);
         return true;
@@ -69,15 +81,17 @@ public class ChatSystem {
 
     /**
      * Sends a /bless message from a god to a follower.
-     *
-     * @param god the god sending the blessing message
-     * @param targetName the name of the target mortal
-     * @param message the blessing message
-     * @return true if the message was sent; false if rejected
-     *
-     * <p>Requirements: 19.2, 19.4
+     * MED #29 fix: reject if event is not running.
      */
     public boolean bless(Player god, String targetName, String message) {
+        // MED #29 fix: phase check
+        com.example.godsvsmortals.enums.EventPhase phase = plugin.getEventManager().getCurrentPhase();
+        if (phase == com.example.godsvsmortals.enums.EventPhase.ENDED
+                || phase == com.example.godsvsmortals.enums.EventPhase.VOTING) {
+            god.sendMessage(Component.text("The event is not currently running.", NamedTextColor.RED));
+            return false;
+        }
+
         UUID godUUID = god.getUniqueId();
 
         // Find target player
