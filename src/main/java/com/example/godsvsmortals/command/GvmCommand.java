@@ -74,7 +74,12 @@ public class GvmCommand implements CommandExecutor, TabCompleter {
                                                  @NotNull String label,
                                                  @NotNull String[] args) {
         if (args.length == 1) {
-            return List.of("start", "stop");
+            com.example.godsvsmortals.enums.EventPhase phase = eventManager.getCurrentPhase();
+            boolean running = phase != com.example.godsvsmortals.enums.EventPhase.ENDED;
+            List<String> options = running ? List.of("stop") : List.of("start");
+            return options.stream()
+                    .filter(o -> o.startsWith(args[0].toLowerCase()))
+                    .collect(java.util.stream.Collectors.toList());
         }
         return List.of();
     }

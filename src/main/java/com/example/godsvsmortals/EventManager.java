@@ -95,6 +95,7 @@ public class EventManager {
         state = new EventState(); // resets to ENDED
         saveState();
         broadcastAll(Component.text("⚡ The Gods vs Mortals event has been stopped by an admin.", NamedTextColor.RED));
+        plugin.getScoreboardManager().clearAll();
         logger.info("Event stopped and state reset.");
     }
 

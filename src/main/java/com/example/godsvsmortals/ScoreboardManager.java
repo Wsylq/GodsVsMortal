@@ -70,6 +70,18 @@ public class ScoreboardManager implements Listener {
     }
 
     /**
+     * Immediately clears the scoreboard for all online players.
+     * Called when the event is stopped.
+     */
+    public void clearAll() {
+        org.bukkit.scoreboard.ScoreboardManager bukkitManager = Bukkit.getScoreboardManager();
+        if (bukkitManager == null) return;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.setScoreboard(bukkitManager.getMainScoreboard());
+        }
+    }
+
+    /**
      * Shows the scoreboard to a specific player.
      *
      * <p>Requirements: 20.1, 20.2, 20.3, 20.4
@@ -78,8 +90,12 @@ public class ScoreboardManager implements Listener {
         EventState state = plugin.getEventManager().getState();
         EventPhase phase = state.getCurrentPhase();
 
-        // Don't show scoreboard if event hasn't started
+        // Clear scoreboard when event is not running
         if (phase == EventPhase.ENDED) {
+            org.bukkit.scoreboard.ScoreboardManager bukkitManager = Bukkit.getScoreboardManager();
+            if (bukkitManager != null) {
+                player.setScoreboard(bukkitManager.getMainScoreboard());
+            }
             return;
         }
 
