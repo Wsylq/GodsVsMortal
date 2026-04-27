@@ -314,6 +314,12 @@ public class PowerSystem implements Listener {
             notifyGodComponent(godUUID, Component.text("That player is not a god.", NamedTextColor.RED));
             return;
         }
+        
+        // Prevent self-rivalry
+        if (godUUID.equals(rivalUUID)) {
+            notifyGodComponent(godUUID, Component.text("You cannot declare yourself as a rival.", NamedTextColor.RED));
+            return;
+        }
 
         GodData godData = loadGodData(godUUID);
 
@@ -1477,13 +1483,33 @@ public class PowerSystem implements Listener {
         }
     }
 
+    /**
+     * Handles god death during Ragnarok.
+     * CRIT #2 fix: Added missing event handler to call onGodDeath().
+     * Requirements: 12.3, 12.4, 14.5
+     */
+    @EventHandler
+    public void onGodPlayerDeath(org.bukkit.event.entity.PlayerDeathEvent event) {
+        Player victim = event.getEntity();
+        UUID victimUUID = victim.getUniqueId();
+        
+        // Check if victim is a god during Ragnarok
+        if (plugin.getEventManager().getCurrentPhase() == com.example.godsvsmortals.enums.EventPhase.RAGNAROK) {
+            List<UUID> godUUIDs = plugin.getEventManager().getState().getGodUUIDs();
+            if (godUUIDs.contains(victimUUID)) {
+                onGodDeath(victimUUID);
+            }
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Bukkit Event Listener – Rivalry damage bonus
     // -------------------------------------------------------------------------
 
     /**
      * Applies a 20% bonus damage multiplier when a follower of one rival god
-     * attacks a follower of the other rival god.
+     * attacks a follower of the other rival god, OR when rival gods fight each other.
+     * LOW #45 fix: Added god-vs-god rivalry damage bonus.
      *
      * <p>Requirement: 10.3
      */
@@ -1494,8 +1520,22 @@ public class PowerSystem implements Listener {
 
         if (!(damager instanceof Player attacker) || !(victim instanceof Player defender)) return;
 
-        UUID attackerGod = getFollowedGod(attacker.getUniqueId());
-        UUID defenderGod = getFollowedGod(defender.getUniqueId());
+        UUID attackerUUID = attacker.getUniqueId();
+        UUID defenderUUID = defender.getUniqueId();
+        
+        // Check if both are gods and rivals
+        List<UUID> godUUIDs = plugin.getEventManager().getState().getGodUUIDs();
+        if (godUUIDs.contains(attackerUUID) && godUUIDs.contains(defenderUUID)) {
+            if (areRivals(attackerUUID, defenderUUID)) {
+                double newDamage = event.getDamage() * (1.0 + RIVALRY_DAMAGE_BONUS);
+                event.setDamage(newDamage);
+                return;
+            }
+        }
+
+        // Check follower-vs-follower rivalry
+        UUID attackerGod = getFollowedGod(attackerUUID);
+        UUID defenderGod = getFollowedGod(defenderUUID);
 
         if (attackerGod == null || defenderGod == null) return;
         if (attackerGod.equals(defenderGod)) return;
