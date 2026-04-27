@@ -80,6 +80,9 @@ public class PowerSystem implements Listener {
     /** godUUID → mortalUUID → MortalData (in-memory registry) */
     private final Map<UUID, MortalData> mortalRegistry = new HashMap<>();
 
+    /** godUUID → GodData cache (#19 fix) */
+    private final Map<UUID, GodData> godDataCache = new HashMap<>();
+
     /** godUUID → BlessingType → last-used timestamp (ms) */
     private final Map<UUID, Map<BlessingType, Long>> blessingCooldowns = new HashMap<>();
 
@@ -130,24 +133,31 @@ public class PowerSystem implements Listener {
      * @return true if the blessing was applied successfully
      */
     public boolean applyBlessing(UUID godUUID, UUID targetUUID, BlessingType type) {
-        // Phase check: blessings only during active event (not voting, not ended)
+        // Phase check: blessings only during active event (not voting, not DAY1, not ended) (#14 fix)
         com.example.godsvsmortals.enums.EventPhase phase = plugin.getEventManager().getCurrentPhase();
         if (phase == com.example.godsvsmortals.enums.EventPhase.VOTING
+                || phase == com.example.godsvsmortals.enums.EventPhase.DAY1
                 || phase == com.example.godsvsmortals.enums.EventPhase.ENDED) {
-            notifyGod(godUUID, "§cYou cannot use powers outside of the event.");
+            notifyGodComponent(godUUID, Component.text("You cannot use powers outside of the event.", NamedTextColor.RED));
+            return false;
+        }
+
+        // #37 fix: prevent self-blessing
+        if (godUUID.equals(targetUUID)) {
+            notifyGodComponent(godUUID, Component.text("You cannot bless yourself.", NamedTextColor.RED));
             return false;
         }
 
         // Check if god is banished (Req 16.4)
         if (isGodBanished(godUUID)) {
-            notifyGod(godUUID, "§cYou are banished and cannot use powers.");
+            notifyGodComponent(godUUID, Component.text("You are banished and cannot use powers.", NamedTextColor.RED));
             return false;
         }
 
         // Validate follower relationship (Req 6.3)
         MortalData mortal = mortalRegistry.get(targetUUID);
         if (mortal == null || !godUUID.equals(mortal.getPledgedGodUUID())) {
-            notifyGod(godUUID, "§cThat player is not your follower.");
+            notifyGodComponent(godUUID, Component.text("That player is not your follower.", NamedTextColor.RED));
             return false;
         }
 
@@ -155,7 +165,7 @@ public class PowerSystem implements Listener {
         int cost = type.getFaithCost();
         int currentFaith = plugin.getFaithEngine().getFaith(godUUID);
         if (currentFaith < cost) {
-            notifyGod(godUUID, "§cInsufficient faith. You have " + currentFaith + " but need " + cost + ".");
+            notifyGodComponent(godUUID, Component.text("Insufficient faith. You have " + currentFaith + " but need " + cost + ".", NamedTextColor.RED));
             return false;
         }
 
@@ -165,14 +175,14 @@ public class PowerSystem implements Listener {
         Long lastUsed = godCooldowns.get(type);
         if (lastUsed != null && (now - lastUsed) < BLESSING_COOLDOWN_MS) {
             long remaining = (BLESSING_COOLDOWN_MS - (now - lastUsed)) / 1000;
-            notifyGod(godUUID, "§cBlessing on cooldown. " + remaining + "s remaining.");
+            notifyGodComponent(godUUID, Component.text("Blessing on cooldown. " + remaining + "s remaining.", NamedTextColor.RED));
             return false;
         }
 
         // HIGH #14 fix: Check if target is online BEFORE deducting faith
         Player target = plugin.getServer().getPlayer(targetUUID);
         if (target == null || !target.isOnline()) {
-            notifyGod(godUUID, "§cThat player is not online.");
+            notifyGodComponent(godUUID, Component.text("That player is not online.", NamedTextColor.RED));
             return false;
         }
 
@@ -186,7 +196,7 @@ public class PowerSystem implements Listener {
         applyBlessingEffect(target, type);
 
         // Notify both parties (Req 6.6)
-        notifyGod(godUUID, "§aBlessing §e" + type.name() + "§a applied to §e" + resolveName(targetUUID) + "§a.");
+        notifyGodComponent(godUUID, Component.text("Blessing " + type.name() + " applied to " + resolveName(targetUUID) + ".", NamedTextColor.GREEN));
         target.sendMessage(Component.text("✦ Your god has blessed you with " + type.name() + "!", NamedTextColor.GOLD));
 
         // Increment blessing count on GodData
@@ -215,20 +225,20 @@ public class PowerSystem implements Listener {
         com.example.godsvsmortals.enums.EventPhase phase = plugin.getEventManager().getCurrentPhase();
         if (phase == com.example.godsvsmortals.enums.EventPhase.VOTING
                 || phase == com.example.godsvsmortals.enums.EventPhase.ENDED) {
-            notifyGod(godUUID, "§cYou cannot use powers outside of the event.");
+            notifyGodComponent(godUUID, Component.text("You cannot use powers outside of the event.", NamedTextColor.RED));
             return false;
         }
 
         // Check if god is banished (Req 16.4)
         if (isGodBanished(godUUID)) {
-            notifyGod(godUUID, "§cYou are banished and cannot use powers.");
+            notifyGodComponent(godUUID, Component.text("You are banished and cannot use powers.", NamedTextColor.RED));
             return false;
         }
 
         // Find the shrine
         Shrine shrine = findShrineById(shrineId);
         if (shrine == null) {
-            notifyGod(godUUID, "§cShrine not found: " + shrineId);
+            notifyGodComponent(godUUID, Component.text("Shrine not found: " + shrineId, NamedTextColor.RED));
             return false;
         }
 
@@ -237,14 +247,14 @@ public class PowerSystem implements Listener {
         // Validate not own follower's shrine (Req 9.3)
         MortalData ownerData = mortalRegistry.get(shrineOwner);
         if (ownerData != null && godUUID.equals(ownerData.getPledgedGodUUID())) {
-            notifyGod(godUUID, "§cYou cannot curse your own follower's shrine.");
+            notifyGodComponent(godUUID, Component.text("You cannot curse your own follower's shrine.", NamedTextColor.RED));
             return false;
         }
 
         // Check truce: prevent cursing truce partner's shrines (Req 23.3, 23.6)
         UUID shrineGod = shrine.getDedicatedGodUUID();
         if (shrineGod != null && isTruceActive(godUUID, shrineGod)) {
-            notifyGod(godUUID, "§cYou have an active truce with that god. You cannot curse their followers' shrines.");
+            notifyGodComponent(godUUID, Component.text("You have an active truce with that god. You cannot curse their followers' shrines.", NamedTextColor.RED));
             return false;
         }
 
@@ -252,7 +262,7 @@ public class PowerSystem implements Listener {
         int cost = type.getFaithCost();
         int currentFaith = plugin.getFaithEngine().getFaith(godUUID);
         if (currentFaith < cost) {
-            notifyGod(godUUID, "§cInsufficient faith. You have " + currentFaith + " but need " + cost + ".");
+            notifyGodComponent(godUUID, Component.text("Insufficient faith. You have " + currentFaith + " but need " + cost + ".", NamedTextColor.RED));
             return false;
         }
 
@@ -268,18 +278,19 @@ public class PowerSystem implements Listener {
             applyCurseEffect(shrine, type);
         }
 
-        // Notify shrine owner (Req 9.5, 9.6)
-        String godName = resolveName(godUUID);
-        String message = "§c☠ Your shrine has been cursed with §e" + type.name() + "§c by §e" + godName + "§c!";
-        Player owner = plugin.getServer().getPlayer(shrineOwner);
-        if (owner != null && owner.isOnline()) {
-            owner.sendMessage(Component.text("☠ Your shrine has been cursed with " + type.name() + " by " + godName + "!", NamedTextColor.RED));
-        } else {
-            // Queue offline notification (Req 9.6)
-            plugin.getNotificationSystem().queue(shrineOwner, message);
+        // Notify shrine owner (Req 9.5, 9.6) – skip for FIRE since destroyShrine already notifies (#13 fix)
+        if (type != CurseType.FIRE) {
+            String godName = resolveName(godUUID);
+            String message = "Your shrine has been cursed with " + type.name() + " by " + godName + "!";
+            Player owner = plugin.getServer().getPlayer(shrineOwner);
+            if (owner != null && owner.isOnline()) {
+                owner.sendMessage(Component.text("☠ " + message, NamedTextColor.RED));
+            } else {
+                plugin.getNotificationSystem().queue(shrineOwner, "☠ " + message);
+            }
         }
 
-        notifyGod(godUUID, "§aCurse §e" + type.name() + "§a applied to shrine §e" + shrineId + "§a.");
+        notifyGodComponent(godUUID, Component.text("Curse " + type.name() + " applied to shrine " + shrineId + ".", NamedTextColor.GREEN));
 
         // Increment curse count on GodData
         updateGodCurseCount(godUUID);
@@ -309,6 +320,13 @@ public class PowerSystem implements Listener {
         if (!godData.getRivals().contains(rivalUUID)) {
             godData.getRivals().add(rivalUUID);
             saveGodData(godData);
+        }
+
+        // #7 fix: make rivalry bilateral
+        GodData rivalData = loadGodData(rivalUUID);
+        if (!rivalData.getRivals().contains(godUUID)) {
+            rivalData.getRivals().add(godUUID);
+            saveGodData(rivalData);
         }
 
         // Broadcast rivalry (Req 10.4)
@@ -350,6 +368,12 @@ public class PowerSystem implements Listener {
         // Enforce one active truce per god (Req 23.5)
         if (hasActiveTruce(godUUID)) {
             notifyGodComponent(godUUID, Component.text("You already have an active truce.", NamedTextColor.RED));
+            return false;
+        }
+
+        // #8 fix: prevent duplicate pending proposals from the same proposer
+        if (trucePending.containsKey(godUUID)) {
+            notifyGodComponent(godUUID, Component.text("You already have a pending truce proposal.", NamedTextColor.RED));
             return false;
         }
 
@@ -590,10 +614,9 @@ public class PowerSystem implements Listener {
             return false;
         }
 
-        // Nighttime check (Req 8.1)
-        long worldTime = mortal.getWorld().getTime();
-        if (worldTime < 13000 || worldTime > 23000) {
-            mortal.sendMessage(org.bukkit.ChatColor.RED + "You can only initiate a betrayal ritual at night (13000–23000 ticks).");
+        // Nighttime check (#22 fix: use isDayTime() instead of hardcoded tick range)
+        if (mortal.getWorld().isDayTime()) {
+            mortal.sendMessage(org.bukkit.ChatColor.RED + "You can only initiate a betrayal ritual at night.");
             return false;
         }
 
@@ -817,22 +840,22 @@ public class PowerSystem implements Listener {
         com.example.godsvsmortals.enums.EventPhase phase = plugin.getEventManager().getCurrentPhase();
         if (phase != com.example.godsvsmortals.enums.EventPhase.DAY3
                 && phase != com.example.godsvsmortals.enums.EventPhase.RAGNAROK) {
-            notifyGod(godUUID, "§cAvatar Mode is only available during Day 3 and Ragnarok.");
+            notifyGodComponent(godUUID, Component.text("Avatar Mode is only available during Day 3 and Ragnarok.", NamedTextColor.RED));
             return false;
         }
 
         // One-use enforcement (Req 14.6)
         GodData godData = loadGodData(godUUID);
         if (godData.isAvatarModeUsed()) {
-            notifyGod(godUUID, "§cYou have already used Avatar Mode this event.");
+            notifyGodComponent(godUUID, Component.text("You have already used Avatar Mode this event.", NamedTextColor.RED));
             return false;
         }
 
         // Faith cost check (Req 14.1)
         int currentFaith = plugin.getFaithEngine().getFaith(godUUID);
         if (currentFaith < AVATAR_FAITH_COST) {
-            notifyGod(godUUID, "§cInsufficient faith. Avatar Mode costs " + AVATAR_FAITH_COST
-                    + " faith. You have " + currentFaith + ".");
+            notifyGodComponent(godUUID, Component.text("Insufficient faith. Avatar Mode costs " + AVATAR_FAITH_COST
+                    + " faith. You have " + currentFaith + ".", NamedTextColor.RED));
             return false;
         }
 
@@ -1500,13 +1523,9 @@ public class PowerSystem implements Listener {
         MortalData mortalData = mortalRegistry.get(player.getUniqueId());
         if (mortalData == null || mortalData.getBetrayelRitualState() == null) return;
 
-        // MED #37 fix: check if rivalry bonus already applied; use additive not multiplicative
-        // We set a flag via metadata to avoid double-applying
-        double currentDamage = event.getDamage();
-        // Apply betrayal bonus additively on top of base damage (not stacking with rivalry ×)
-        // The rivalry handler already ran at NORMAL priority; we add a flat 50% of base
-        // To avoid multiplicative stacking, we track original damage via the event's final damage
-        event.setDamage(currentDamage + (event.getDamage() * (BETRAYAL_DAMAGE_MULTIPLIER - 1.0)));
+        // #6 fix: multiply base damage by BETRAYAL_DAMAGE_MULTIPLIER once (no stacking)
+        double baseDamage = event.getDamage();
+        event.setDamage(baseDamage * BETRAYAL_DAMAGE_MULTIPLIER);
     }
 
     // -------------------------------------------------------------------------
@@ -1548,6 +1567,8 @@ public class PowerSystem implements Listener {
 
     /**
      * Returns true if the two gods currently have an active truce with each other.
+     * Note: this method has a side effect — it expires the truce if it has elapsed.
+     * This is intentional: lazy expiry avoids needing a separate cleanup task.
      */
     public boolean isTruceActive(UUID godA, UUID godB) {
         GodData dataA = loadGodData(godA);
@@ -1614,6 +1635,14 @@ public class PowerSystem implements Listener {
         switch (type) {
             case GOLDEN_APPLE -> target.getInventory().addItem(new ItemStack(Material.GOLDEN_APPLE, 1));
             case SUMMON_WOLF -> {
+                // #34 fix: limit wolves per player to 3 to prevent lag griefing
+                long existingWolves = target.getWorld().getEntitiesByClass(Wolf.class).stream()
+                        .filter(w -> target.equals(w.getOwner()))
+                        .count();
+                if (existingWolves >= 3) {
+                    target.sendMessage(Component.text("You already have the maximum number of wolves (3).", NamedTextColor.YELLOW));
+                    return;
+                }
                 Location loc = target.getLocation();
                 Wolf wolf = (Wolf) loc.getWorld().spawnEntity(loc, org.bukkit.entity.EntityType.WOLF);
                 wolf.setTamed(true);
@@ -1636,8 +1665,8 @@ public class PowerSystem implements Listener {
                 loc.getWorld().getBlockAt(loc).setType(Material.FIRE);
             }
             case SILVERFISH -> {
-                // MED #35 fix: spawn at center of block, 1 block above, with small random offset
-                Random rng = new Random();
+                // #28 fix: use ThreadLocalRandom instead of new Random()
+                java.util.concurrent.ThreadLocalRandom rng = java.util.concurrent.ThreadLocalRandom.current();
                 for (int i = 0; i < 3; i++) {
                     Location spawnLoc = loc.clone().add(
                             0.5 + (rng.nextDouble() - 0.5) * 0.5,
@@ -1668,6 +1697,10 @@ public class PowerSystem implements Listener {
     // -------------------------------------------------------------------------
 
     GodData loadGodData(UUID godUUID) {
+        // #19 fix: check cache first
+        if (godDataCache.containsKey(godUUID)) {
+            return godDataCache.get(godUUID);
+        }
         File godsDir = new File(plugin.getDataFolder(), "gods");
         File file = new File(godsDir, godUUID.toString() + ".yml");
         GodData data = GodData.load(file, logger);
@@ -1675,10 +1708,13 @@ public class PowerSystem implements Listener {
             // Return a transient stub so callers don't NPE
             data = new GodData(godUUID, resolveName(godUUID));
         }
+        godDataCache.put(godUUID, data);
         return data;
     }
 
     private void saveGodData(GodData data) {
+        // #19 fix: update cache on save
+        godDataCache.put(data.getUuid(), data);
         File godsDir = new File(plugin.getDataFolder(), "gods");
         godsDir.mkdirs();
         File file = new File(godsDir, data.getUuid().toString() + ".yml");
@@ -1727,29 +1763,28 @@ public class PowerSystem implements Listener {
     }
 
     private void notifyGod(UUID godUUID, String message) {
-        // MED #30 fix: strip legacy § codes and send as plain Adventure component
+        // #33 fix: use Adventure Component directly, no legacy § codes needed
         Player player = plugin.getServer().getPlayer(godUUID);
         if (player != null && player.isOnline()) {
-            String clean = message.replaceAll("§[0-9a-fk-or]", "");
-            player.sendMessage(Component.text(clean));
+            player.sendMessage(Component.text(message));
         }
     }
 
     private void notifyPlayer(UUID playerUUID, String message) {
         Player player = plugin.getServer().getPlayer(playerUUID);
         if (player != null && player.isOnline()) {
-            String clean = message.replaceAll("§[0-9a-fk-or]", "");
-            player.sendMessage(Component.text(clean));
+            player.sendMessage(Component.text(message));
         }
     }
 
     private String resolveName(UUID uuid) {
-        if (uuid == null) return "Unknown";
+        // #39 fix: return "Unknown Player" instead of raw UUID string
+        if (uuid == null) return "Unknown Player";
         Player p = plugin.getServer().getPlayer(uuid);
         if (p != null) return p.getName();
         var op = plugin.getServer().getOfflinePlayer(uuid);
         String name = op.getName();
-        return name != null ? name : uuid.toString();
+        return name != null ? name : "Unknown Player";
     }
 
     // -------------------------------------------------------------------------
@@ -1760,7 +1795,8 @@ public class PowerSystem implements Listener {
         File mortalsDir = new File(plugin.getDataFolder(), "mortals");
         if (!mortalsDir.exists()) return;
 
-        File[] files = mortalsDir.listFiles((dir, name) -> name.endsWith(".yml"));        if (files == null) return;
+        File[] files = mortalsDir.listFiles((dir, name) -> name.endsWith(".yml"));
+        if (files == null) return;
 
         for (File file : files) {
             MortalData data = MortalData.load(file, logger);

@@ -35,6 +35,17 @@ public class BlessCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(Component.text("Only players can use this command.", NamedTextColor.RED));
             return true;
         }
+        // #40 fix: permission check
+        if (!player.hasPermission("godsvsmortals.god")) {
+            player.sendMessage(Component.text("You do not have permission.", NamedTextColor.RED));
+            return true;
+        }
+        // #40 fix: must be an elected god
+        java.util.List<java.util.UUID> electedGods = plugin.getEventManager().getState().getGodUUIDs();
+        if (!electedGods.contains(player.getUniqueId())) {
+            player.sendMessage(Component.text("You are not an elected god.", NamedTextColor.RED));
+            return true;
+        }
         if (args.length < 2) {
             player.sendMessage(Component.text("Usage: /bless <player> <message>", NamedTextColor.RED));
             return true;

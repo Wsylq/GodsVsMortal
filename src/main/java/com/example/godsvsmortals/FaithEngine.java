@@ -42,6 +42,10 @@ public class FaithEngine {
     /** In-memory faith totals: godUUID → current faith */
     private final Map<UUID, Integer> faithMap = new HashMap<>();
 
+    /** Cached config values (#20 fix) */
+    private int cachedBaseRate = -1;
+    private int cachedFaithCap = -1;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -49,6 +53,13 @@ public class FaithEngine {
     public FaithEngine(GodsVsMortalsPlugin plugin) {
         this.plugin = plugin;
         this.logger = plugin.getLogger();
+        loadConfig();
+    }
+
+    /** Loads (or reloads) cached config values. */
+    private void loadConfig() {
+        cachedBaseRate = plugin.getConfig().getInt("faith.base-rate-per-minute", 1);
+        cachedFaithCap = plugin.getConfig().getInt("event.faith-cap", 10000);
     }
 
     // -------------------------------------------------------------------------
@@ -65,8 +76,9 @@ public class FaithEngine {
      * <p>Requirements: 5.1, 5.2, 5.3, 5.6
      */
     public void distributeFaith() {
-        int baseRate = plugin.getConfig().getInt("faith.base-rate-per-minute", 1);
-        int faithCap = plugin.getConfig().getInt("event.faith-cap", 10000);
+        // #20 fix: use cached config values instead of reading config every tick
+        int baseRate = cachedBaseRate;
+        int faithCap = cachedFaithCap;
 
         Collection<Shrine> activeShrines = getActiveShrines();
 
@@ -91,8 +103,9 @@ public class FaithEngine {
             persistGodFaith(godUUID, newTotal);
         }
 
-        // Update lastTickTimestamp in EventState
-        plugin.getEventManager().getState().setLastTickTimestamp(System.currentTimeMillis());
+        // Update lastTickTimestamp in EventState using EventManager's clock (#11 fix)
+        plugin.getEventManager().getState().setLastTickTimestamp(
+                plugin.getEventManager().getClock().currentTimeMillis());
     }
 
     /**
@@ -112,7 +125,8 @@ public class FaithEngine {
      */
     public void addFaith(UUID godUUID, int amount) {
         if (amount <= 0) return;
-        int faithCap = plugin.getConfig().getInt("event.faith-cap", 10000);
+        // #20 fix: use cached faith cap
+        int faithCap = cachedFaithCap;
         int current = getFaith(godUUID);
         int newTotal = Math.min(current + amount, faithCap);
         faithMap.put(godUUID, newTotal);
@@ -186,9 +200,10 @@ public class FaithEngine {
             if (catchUp <= 0) continue;
 
             int current = getFaith(godUUID);
-            int newTotal = Math.min(current + catchUp, faithCap);
-            faithMap.put(godUUID, newTotal);
-            persistGodFaith(godUUID, newTotal);
+            // #17 fix: use long arithmetic to avoid integer overflow
+            long newTotal = Math.min((long) current + catchUp, faithCap);
+            faithMap.put(godUUID, (int) newTotal);
+            persistGodFaith(godUUID, (int) newTotal);
         }
 
         logger.info("FaithEngine: applied catch-up faith for " + downtimeDuration / 1000 + "s downtime.");

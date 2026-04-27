@@ -324,9 +324,14 @@ public class QuestSystem {
 
     /**
      * Returns a small item reward for individual quest completion (bread × 1 by default).
+     * #35 fix: use quests.quest-reward key instead of quests.login-reward.
      */
     private ItemStack getQuestItemReward() {
-        List<String> entries = plugin.getConfig().getStringList("quests.login-reward");
+        List<String> entries = plugin.getConfig().getStringList("quests.quest-reward");
+        if (entries.isEmpty()) {
+            // fallback to login-reward if quest-reward not configured
+            entries = plugin.getConfig().getStringList("quests.login-reward");
+        }
         if (!entries.isEmpty()) {
             ItemStack item = parseItemEntry(entries.get(0));
             if (item != null) {
@@ -377,8 +382,9 @@ public class QuestSystem {
      * Persists a mortal's data to disk.
      * MED #24 fix: save synchronously on main thread to avoid race conditions.
      * The file I/O is fast enough for individual saves; bulk saves use saveAllMortals.
+     * #3 fix: made public so ShrineCommand can call it directly.
      */
-    private void saveMortalData(MortalData data) {
+    public void saveMortalData(MortalData data) {
         File mortalsDir = new File(plugin.getDataFolder(), "mortals");
         mortalsDir.mkdirs();
         File file = new File(mortalsDir, data.getUuid().toString() + ".yml");

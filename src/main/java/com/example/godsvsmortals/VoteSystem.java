@@ -167,13 +167,12 @@ public class VoteSystem {
 
     /**
      * Extends the voting window by the configured extension duration.
-     * HIGH #9 fix: actually adjusts the phase start timestamp so the timer is extended.
+     * HIGH #9 fix: actually adjusts the phase duration via EventManager.addVotingExtension().
      * Broadcasts the extension to all online players (Req 2.7).
      */
     public void extendVoting() {
-        // Shift phaseStartTimestamp forward so the phase lasts extensionDurationMs longer
-        long current = plugin.getEventManager().getState().getPhaseStartTimestamp();
-        plugin.getEventManager().getState().setPhaseStartTimestamp(current + extensionDurationMs);
+        // #12 fix: use EventManager.addVotingExtension() instead of modifying phaseStartTimestamp
+        plugin.getEventManager().addVotingExtension(extensionDurationMs);
         broadcastAll(Component.text(
                 "⚡ Voting has been extended by " + (extensionDurationMs / 60_000L) + " minutes!",
                 NamedTextColor.YELLOW));

@@ -570,11 +570,18 @@ public class ShrineDetector implements Listener {
     }
 
     /**
+     * Publicly exposes shrine saving for external callers (e.g. ShrineCommand).
+     * #3 fix: expose saveShrine as public.
+     */
+    public void saveShrinePublic(Shrine shrine) {
+        saveShrine(shrine);
+    }
+
+    /**
      * Saves all active shrines to disk synchronously.
      * Called during plugin shutdown.
      */
-    public void saveAllShrines() {
-        File shrinesDir = new File(plugin.getDataFolder(), "shrines");
+    public void saveAllShrines() {        File shrinesDir = new File(plugin.getDataFolder(), "shrines");
         shrinesDir.mkdirs();
         for (Shrine shrine : shrinesByOwner.values()) {
             File file = new File(shrinesDir, shrine.getId() + ".yml");

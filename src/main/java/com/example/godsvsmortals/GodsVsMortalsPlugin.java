@@ -4,6 +4,10 @@ import com.example.godsvsmortals.command.*;
 import com.example.godsvsmortals.util.Clock;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.scheduler.BukkitTask;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Main plugin class for Gods vs Mortals.
@@ -23,6 +27,9 @@ public class GodsVsMortalsPlugin extends JavaPlugin {
     private ChatSystem chatSystem;
     private TitleSystem titleSystem;
     private ScoreboardManager scoreboardManager;
+
+    /** #38 fix: track scheduled tasks so they can be cancelled on disable */
+    private final List<BukkitTask> scheduledTasks = new ArrayList<>();
 
     @Override
     public void onEnable() {
@@ -74,13 +81,18 @@ public class GodsVsMortalsPlugin extends JavaPlugin {
         faithEngine.applyCatchUpFaith(lastTick);
 
         // Register repeating BukkitTask: distribute faith every 60 seconds (1200 ticks)
-        getServer().getScheduler().runTaskTimer(this, faithEngine::distributeFaith, 1200L, 1200L);
+        // #25 fix: only distribute faith when event is running
+        scheduledTasks.add(getServer().getScheduler().runTaskTimer(this, () -> {
+            if (eventManager.getCurrentPhase() != com.example.godsvsmortals.enums.EventPhase.ENDED) {
+                faithEngine.distributeFaith();
+            }
+        }, 1200L, 1200L));
 
         // Register repeating BukkitTask: tick betrayal rituals every second (20 ticks)
-        getServer().getScheduler().runTaskTimer(this, powerSystem::tickBetrayalRituals, 20L, 20L);
+        scheduledTasks.add(getServer().getScheduler().runTaskTimer(this, powerSystem::tickBetrayalRituals, 20L, 20L));
 
         // Register repeating BukkitTask: refresh scoreboard every 5 seconds (100 ticks)
-        getServer().getScheduler().runTaskTimer(this, scoreboardManager::refresh, 100L, 100L);
+        scheduledTasks.add(getServer().getScheduler().runTaskTimer(this, scoreboardManager::refresh, 100L, 100L));
 
         // Register commands
         var gvmCmd = getCommand("gvm");
@@ -147,6 +159,14 @@ public class GodsVsMortalsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // #38 fix: cancel all scheduled tasks
+        for (BukkitTask task : scheduledTasks) {
+            if (task != null && !task.isCancelled()) {
+                task.cancel();
+            }
+        }
+        scheduledTasks.clear();
+
         // Save all state synchronously before the server shuts down (Req 1.8, 11.4, 21.4)
         if (eventManager != null) {
             eventManager.saveState();
@@ -167,7 +187,7 @@ public class GodsVsMortalsPlugin extends JavaPlugin {
             shrineDetector.saveAllShrines();
         }
         getLogger().info("GodsVsMortals disabled.");
-        instance = null;
+        // #41 fix: don't null out instance — async tasks may still reference it during shutdown
     }
 
     public static GodsVsMortalsPlugin getInstance() {

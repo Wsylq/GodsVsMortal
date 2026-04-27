@@ -43,6 +43,9 @@ public class EventManager {
     private EventState state;
     private BukkitTask tickTask;
 
+    // Voting extension accumulator (#12 fix)
+    private long votingExtensionMs = 0L;
+
     // Prophecy state
     private List<String> prophecyPool;
     private List<String> prophecyShuffled;
@@ -67,6 +70,11 @@ public class EventManager {
         this.state = new EventState();
         this.votingDurationMs = votingDurationMs;
         this.dayDurationMs = dayDurationMs;
+        // #4 fix: initialize prophecy pool to avoid NPE in tests
+        this.prophecyPool = new ArrayList<>();
+        this.prophecyShuffled = new ArrayList<>();
+        this.prophecyIndex = 0;
+        this.lastProphecyMs = 0L;
     }
 
     // -------------------------------------------------------------------------
@@ -270,7 +278,7 @@ public class EventManager {
      */
     long getPhaseDuration(EventPhase phase) {
         return switch (phase) {
-            case VOTING -> votingDurationMs;
+            case VOTING -> votingDurationMs + votingExtensionMs; // #12 fix: include extension
             case DAY1, DAY2 -> dayDurationMs;
             case DAY3 -> Math.max(0, dayDurationMs - RAGNAROK_DURATION_MS); // transition when 12h remain
             case RAGNAROK -> RAGNAROK_DURATION_MS;
@@ -325,14 +333,26 @@ public class EventManager {
 
     private void broadcastFinalStandings() {
         broadcastAll(Component.text("⚡ The Gods vs Mortals event has ended! Final standings:", NamedTextColor.GOLD));
+        // #31 fix: show actual standings
+        List<UUID> godUUIDs = state.getGodUUIDs();
+        for (UUID godUUID : godUUIDs) {
+            String name;
+            org.bukkit.entity.Player god = Bukkit.getPlayer(godUUID);
+            if (god != null) {
+                name = god.getName();
+            } else {
+                var op = Bukkit.getOfflinePlayer(godUUID);
+                name = op.getName() != null ? op.getName() : godUUID.toString();
+            }
+            int faith = plugin.getFaithEngine().getFaith(godUUID);
+            int followers = plugin.getFaithEngine().getFollowerCount(godUUID);
+            broadcastAll(Component.text("  ⚔ " + name + " — Faith: " + faith + " | Followers: " + followers,
+                    NamedTextColor.YELLOW));
+        }
         // Assign end-of-event titles (CRIT #5 fix)
         if (plugin.getTitleSystem() != null) {
             plugin.getTitleSystem().assignEndOfEventTitles();
         }
-        // Detailed standings will be populated by other subsystems (FaithEngine, etc.)
-        // For now broadcast a placeholder that other tasks will extend.
-        broadcastAll(Component.text("  (Detailed standings will be shown once all subsystems are wired.)",
-                NamedTextColor.YELLOW));
     }
 
     private void broadcastAll(Component message) {
@@ -359,6 +379,19 @@ public class EventManager {
     // -------------------------------------------------------------------------
     // Package-private accessors for testing
     // -------------------------------------------------------------------------
+
+    /**
+     * Adds to the voting extension duration (#12 fix).
+     * Called by VoteSystem.extendVoting() instead of modifying phaseStartTimestamp.
+     */
+    public void addVotingExtension(long ms) {
+        this.votingExtensionMs += ms;
+    }
+
+    /** Exposes the clock for use by other subsystems (e.g. FaithEngine). */
+    public Clock getClock() {
+        return clock;
+    }
 
     /** Exposes internal state for testing purposes. */
     public EventState getState() {

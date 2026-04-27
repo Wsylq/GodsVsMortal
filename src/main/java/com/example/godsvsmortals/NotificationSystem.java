@@ -34,10 +34,11 @@ public class NotificationSystem implements Listener {
 
     /**
      * Queues a notification for a player (Req 21.1, 21.2).
+     * #18 fix: save async instead of blocking the main thread on every queue call.
      */
     public void queue(UUID playerUUID, String message) {
         queue.computeIfAbsent(playerUUID, k -> new ArrayList<>()).add(message);
-        saveQueue();
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, this::saveQueue);
     }
 
     /**

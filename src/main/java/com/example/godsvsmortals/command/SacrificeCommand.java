@@ -56,11 +56,13 @@ public class SacrificeCommand implements CommandExecutor, TabCompleter {
     }
 
     private UUID resolveGodUUID(Player sender, String name) {
+        // #26 fix: only return UUIDs that are in the elected gods list
+        List<UUID> godUUIDs = plugin.getEventManager().getState().getGodUUIDs();
         Player online = sender.getServer().getPlayer(name);
-        if (online != null) return online.getUniqueId();
+        if (online != null && godUUIDs.contains(online.getUniqueId())) return online.getUniqueId();
         @SuppressWarnings("deprecation")
         var offline = sender.getServer().getOfflinePlayer(name);
-        if (offline.hasPlayedBefore()) return offline.getUniqueId();
+        if (offline.hasPlayedBefore() && godUUIDs.contains(offline.getUniqueId())) return offline.getUniqueId();
         return null;
     }
 

@@ -151,8 +151,8 @@ public class ScoreboardManager implements Listener {
                 Score followerScore = objective.getScore("  §7Followers: §f" + followerCount);
                 followerScore.setScore(score--);
 
-                // Faith total
-                int faith = godData.getFaith();
+                // Faith total – use live FaithEngine value (#1/#2/#15 fix)
+                int faith = plugin.getFaithEngine().getFaith(godUUID);
                 Score faithScore = objective.getScore("  §7Faith: §f" + faith);
                 faithScore.setScore(score--);
 

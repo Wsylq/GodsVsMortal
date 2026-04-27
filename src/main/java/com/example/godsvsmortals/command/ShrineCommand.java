@@ -80,10 +80,16 @@ public class ShrineCommand implements CommandExecutor, TabCompleter {
 
         // Dedicate the shrine
         shrine.setDedicatedGodUUID(targetGodUUID);
+        // #3 fix: persist shrine to disk
+        plugin.getShrineDetector().saveShrinePublic(shrine);
         
         // Update mortal's pledged god
         var mortalData = plugin.getQuestSystem().getMortalData(player.getUniqueId());
         mortalData.setPledgedGodUUID(targetGodUUID);
+        // #3 fix: persist mortal data to disk
+        plugin.getQuestSystem().saveMortalData(mortalData);
+        // #16 fix: sync to PowerSystem's mortalRegistry
+        plugin.getPowerSystem().registerMortal(mortalData);
 
         player.sendMessage(Component.text(
                 "✦ Your shrine has been dedicated to " + godName + "!",

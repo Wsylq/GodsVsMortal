@@ -26,6 +26,8 @@ sacrifice:
 
 quests:
   daily-reward-faith: 5
+  quest-reward:
+    - "BREAD:1"
   login-reward:
     - "BREAD:3"
 

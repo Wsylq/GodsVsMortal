@@ -51,8 +51,13 @@ public class GvmCommand implements CommandExecutor, TabCompleter {
 
         switch (args[0].toLowerCase()) {
             case "start" -> {
+                com.example.godsvsmortals.enums.EventPhase before = eventManager.getCurrentPhase();
                 eventManager.startEvent();
-                sender.sendMessage(Component.text("Event started.", NamedTextColor.GREEN));
+                if (eventManager.getCurrentPhase() != before) {
+                    sender.sendMessage(Component.text("Event started.", NamedTextColor.GREEN));
+                } else {
+                    sender.sendMessage(Component.text("Event is already running.", NamedTextColor.RED));
+                }
             }
             case "stop" -> {
                 eventManager.stopEvent();
